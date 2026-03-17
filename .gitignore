@@ -1,0 +1,16 @@
+# 의존성
+vendor/
+
+# 빌드 아티팩트
+/server
+*.exe
+
+# 런타임
+server.log
+server.pid
+
+# 테스트 샘플 (scripts/generate_sample.sh로 재생성 가능)
+samples/
+
+# 개인 문서
+media_backend_analysis.md

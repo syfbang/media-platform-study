@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Media Platform — Player</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 20px; }
+  h1 { font-size: 1.4em; margin-bottom: 16px; color: #fff; }
+  .section { background: #1a1a1a; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .section h2 { font-size: 1em; margin-bottom: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+  input[type=file], button { padding: 8px 16px; border-radius: 4px; border: 1px solid #333; background: #222; color: #fff; cursor: pointer; }
+  button:hover { background: #333; }
+  button.active { background: #2563eb; border-color: #2563eb; }
+  #status { margin-top: 8px; font-size: 0.85em; color: #888; }
+  .media-list { max-height: 200px; overflow-y: auto; }
+  .media-item { padding: 8px; border-bottom: 1px solid #222; cursor: pointer; display: flex; justify-content: space-between; }
+  .media-item:hover { background: #222; }
+  .media-item.selected { background: #1e3a5f; }
+  .media-item .name { font-weight: 500; }
+  .media-item .meta { font-size: 0.8em; color: #666; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  video { width: 100%; max-height: 480px; background: #000; border-radius: 4px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; }
+  .badge.uploaded { background: #854d0e; }
+  .badge.transcoding { background: #1e40af; }
+  .badge.ready { background: #166534; }
+  .badge.failed { background: #991b1b; }
+</style>
+</head>
+<body>
+
+<h1>🎬 Media Service Platform</h1>
+
+<!-- Upload -->
+<div class="section">
+  <h2>Upload MP4</h2>
+  <input type="file" id="fileInput" accept=".mp4">
+  <button onclick="uploadFile()">Upload</button>
+  <div id="status"></div>
+</div>
+
+<!-- Media List -->
+<div class="section">
+  <h2>Media Library</h2>
+  <button onclick="loadMedia()" style="margin-bottom:8px">Refresh</button>
+  <div class="media-list" id="mediaList"></div>
+</div>
+
+<!-- Player -->
+<div class="section">
+  <h2>Player</h2>
+  <div class="tabs">
+    <button class="active" onclick="switchTab('hls')">HLS</button>
+    <button onclick="switchTab('dash')">DASH</button>
+    <button onclick="switchTab('webrtc')">WebRTC</button>
+  </div>
+  <video id="player" controls autoplay muted></video>
+</div>
+
+<!-- Live Streaming -->
+<div class="section">
+  <h2>🔴 Live Channels (RTSP → WebRTC)</h2>
+  <button onclick="loadLiveChannels()" style="margin-bottom:8px">Refresh</button>
+  <div class="media-list" id="liveList"><span class="meta">No live channels</span></div>
+  <video id="livePlayer" controls autoplay style="margin-top:12px;display:none"></video>
+  <div id="liveStatus" style="margin-top:8px;font-size:0.85em;color:#888"></div>
+</div>
+
+<script>
+const API = window.location.origin;
+let selectedMedia = null;
+let currentTab = 'hls';
+let hlsInstance = null;
+let dashPlayer = null;
+let peerConnection = null;
+
+async function uploadFile() {
+  const file = document.getElementById('fileInput').files[0];
+  if (!file) return setStatus('파일을 선택하세요');
+  setStatus('업로드 중...');
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch(API + '/api/upload', { method: 'POST', body: form });
+    const data = await res.json();
+    if (res.ok) {
+      setStatus(`업로드 완료: ${data.ID}`);
+      loadMedia();
+    } else {
+      setStatus(`에러: ${data.error}`);
+    }
+  } catch (e) { setStatus(`에러: ${e.message}`); }
+}
+
+async function loadMedia() {
+  try {
+    const res = await fetch(API + '/api/media?limit=50');
+    const list = await res.json();
+    const el = document.getElementById('mediaList');
+    el.innerHTML = (list || []).map(m => `
+      <div class="media-item ${selectedMedia?.ID === m.ID ? 'selected' : ''}" onclick='selectMedia(${JSON.stringify(m)})'>
+        <div>
+          <span class="name">${m.Filename}</span><br>
+          <span class="meta">${(m.Size/1024/1024).toFixed(1)}MB · ${new Date(m.CreatedAt).toLocaleString()}</span>
+        </div>
+        <span class="badge ${m.Status}">${m.Status}</span>
+      </div>
+    `).join('');
+  } catch (e) { console.error(e); }
+}
+
+function selectMedia(m) {
+  selectedMedia = m;
+  loadMedia();
+  play();
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  cleanup();
+  if (selectedMedia) play();
+}
+
+function play() {
+  if (!selectedMedia) return;
+  cleanup();
+  const video = document.getElementById('player');
+
+  if (currentTab === 'hls') playHLS(video);
+  else if (currentTab === 'dash') playDASH(video);
+  else if (currentTab === 'webrtc') playWebRTC(video);
+}
+
+function playHLS(video) {
+  if (selectedMedia.Status !== 'ready') return setStatus('트랜스코딩 완료 후 재생 가능');
+  const url = `${API}/api/media/${selectedMedia.ID}/hls/master.m3u8`;
+  if (Hls.isSupported()) {
+    hlsInstance = new Hls();
+    hlsInstance.loadSource(url);
+    hlsInstance.attachMedia(video);
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+    video.play();
+  }
+  setStatus('HLS 재생 중');
+}
+
+function playDASH(video) {
+  if (selectedMedia.Status !== 'ready') return setStatus('트랜스코딩 완료 후 재생 가능');
+  const url = `${API}/api/media/${selectedMedia.ID}/dash/manifest.mpd`;
+  dashPlayer = dashjs.MediaPlayer().create();
+  dashPlayer.initialize(video, url, true);
+  setStatus('DASH 재생 중');
+}
+
+async function playWebRTC(video) {
+  setStatus('WebRTC 연결 중...');
+  peerConnection = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:localhost:3478' }]
+  });
+
+  peerConnection.ontrack = (e) => {
+    video.srcObject = e.streams[0] || new MediaStream([e.track]);
+    video.play();
+    setStatus('WebRTC 스트리밍 중');
+  };
+
+  peerConnection.onconnectionstatechange = () => {
+    setStatus(`WebRTC: ${peerConnection.connectionState}`);
+  };
+
+  // Receive only
+  peerConnection.addTransceiver('video', { direction: 'recvonly' });
+
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+
+  try {
+    const res = await fetch(`${API}/api/media/${selectedMedia.ID}/webrtc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sdp: offer.sdp })
+    });
+    const answer = await res.json();
+    if (answer.error) { setStatus(`에러: ${answer.error}`); return; }
+    await peerConnection.setRemoteDescription({ type: answer.type || 'answer', sdp: answer.sdp });
+  } catch (e) { setStatus(`WebRTC 에러: ${e.message}`); }
+}
+
+function cleanup() {
+  const video = document.getElementById('player');
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+  if (dashPlayer) { dashPlayer.reset(); dashPlayer = null; }
+  if (peerConnection) { peerConnection.close(); peerConnection = null; }
+  video.srcObject = null;
+  video.src = '';
+}
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+// Auto-load on start
+loadMedia();
+// Auto-refresh every 5s
+setInterval(loadMedia, 5000);
+
+// --- Live Streaming ---
+let livePC = null;
+
+async function loadLiveChannels() {
+  try {
+    const res = await fetch(API + '/api/live');
+    const data = await res.json();
+    const el = document.getElementById('liveList');
+    const chs = data.channels || [];
+    if (chs.length === 0) {
+      el.innerHTML = '<span class="meta">No live channels — run: bash scripts/rtsp_push.sh</span>';
+      return;
+    }
+    el.innerHTML = chs.map(c => `
+      <div class="media-item" onclick="playLive('${c}')">
+        <span class="name">🔴 ${c}</span>
+        <span class="badge ready">LIVE</span>
+      </div>
+    `).join('');
+  } catch (e) { console.error(e); }
+}
+
+async function playLive(channel) {
+  const video = document.getElementById('livePlayer');
+  const status = document.getElementById('liveStatus');
+  video.style.display = 'block';
+
+  if (livePC) { livePC.close(); livePC = null; }
+  video.srcObject = null;
+  status.textContent = 'WebRTC connecting...';
+
+  livePC = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+  livePC.addTransceiver('video', { direction: 'recvonly' });
+  livePC.ontrack = (e) => {
+    video.srcObject = e.streams[0] || new MediaStream([e.track]);
+    video.play();
+    status.textContent = '🔴 Live: ' + channel;
+  };
+  livePC.onconnectionstatechange = () => {
+    status.textContent = 'WebRTC: ' + livePC.connectionState;
+  };
+
+  const offer = await livePC.createOffer();
+  await livePC.setLocalDescription(offer);
+
+  try {
+    const res = await fetch(API + '/api/live/' + channel + '/webrtc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sdp: offer.sdp })
+    });
+    const answer = await res.json();
+    await livePC.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
+  } catch (e) { status.textContent = 'Error: ' + e.message; }
+}
+
+loadLiveChannels();
+setInterval(loadLiveChannels, 3000);
+</script>
+</body>
+</html>

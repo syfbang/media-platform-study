@@ -1,0 +1,60 @@
+{
+  "dashboard": {
+    "title": "Media Platform",
+    "uid": "media-platform",
+    "timezone": "browser",
+    "refresh": "10s",
+    "time": { "from": "now-30m", "to": "now" },
+    "panels": [
+      {
+        "id": 1, "type": "timeseries", "title": "HTTP Request Rate",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [{ "expr": "rate(http_server_request_duration_seconds_count[1m])", "legendFormat": "{{http_method}} {{http_route}}" }],
+        "fieldConfig": { "defaults": { "unit": "reqps" } }
+      },
+      {
+        "id": 2, "type": "timeseries", "title": "HTTP Latency (p95)",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [{ "expr": "histogram_quantile(0.95, rate(http_server_request_duration_seconds_bucket[1m]))", "legendFormat": "p95" }],
+        "fieldConfig": { "defaults": { "unit": "s" } }
+      },
+      {
+        "id": 3, "type": "stat", "title": "Total Requests",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [{ "expr": "sum(http_server_request_duration_seconds_count)" }],
+        "fieldConfig": { "defaults": { "unit": "short" } }
+      },
+      {
+        "id": 4, "type": "stat", "title": "Upload Bytes Total",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [{ "expr": "sum(http_server_request_body_size_bytes_sum)" }],
+        "fieldConfig": { "defaults": { "unit": "bytes" } }
+      },
+      {
+        "id": 5, "type": "stat", "title": "Live Channels",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [{ "expr": "live_channels" }],
+        "fieldConfig": { "defaults": { "unit": "short" } }
+      },
+      {
+        "id": 6, "type": "stat", "title": "Live Viewers",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [{ "expr": "live_viewers" }],
+        "fieldConfig": { "defaults": { "unit": "short" } }
+      }
+    ],
+    "templating": {
+      "list": [{
+        "name": "DS_PROMETHEUS", "type": "datasource",
+        "query": "prometheus", "current": { "text": "Prometheus", "value": "Prometheus" }
+      }]
+    }
+  },
+  "overwrite": true
+}
